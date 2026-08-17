@@ -13,6 +13,7 @@ function rows(){return comments.map(x=>({
   "Comment video time":offset(x["Comment video time"]),
   Badge:x.Badge||"",
   Name:x.Name||"",
+  Color:x.Color||"",
   Comment:x.Comment||""
 }))}
 function status(t,e=false){
@@ -29,7 +30,7 @@ function preview(){
   const b=$("preview");b.innerHTML="";
   comments.slice(0,200).forEach(r=>{
     const tr=document.createElement("tr");
-    [r.Date,offset(r["Comment video time"]),r.Badge,r.Name,r.Comment].forEach(v=>{
+    [r.Date,offset(r["Comment video time"]),r.Badge,r.Name,r.Color,r.Comment].forEach(v=>{
       const td=document.createElement("td");td.textContent=v||"";tr.appendChild(td);
     });
     b.appendChild(tr);
@@ -77,7 +78,7 @@ $("download").onclick=async()=>{
 $("vod").onkeydown=e=>{if(e.key==="Enter")$("download").click()};
 
 $("csv").onclick=()=>{
-  const h=["Date","Comment video time","Badge","Name","Comment"];
+  const h=["Date","Comment video time","Badge","Name","Color","Comment"];
   const r=rows();
   const csv=[h.map(esc).join(","),...r.map(x=>h.map(k=>esc(x[k])).join(","))].join("\r\n");
   blob(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"}),`twitch_${vodInfo?.id||"chat"}_chat.csv`);

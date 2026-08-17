@@ -13,3 +13,4 @@ button:disabled{opacity:.55;cursor:wait}.secondary{background:#fff;color:#5e32bd
 table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:10px 12px;border-bottom:1px solid #eeeaf2;white-space:nowrap}
 th{position:sticky;top:0;background:#faf9fc}td:last-child{white-space:normal;min-width:300px}.note{margin:18px 2px;color:#756e7e;font-size:13px}
 .hidden{display:none}@media(max-width:720px){.container{padding:28px 14px}h1{font-size:32px}.input-row{flex-direction:column}.result-head{flex-direction:column}}
+.color-cell{display:flex;align-items:center;gap:7px}.color-dot{width:14px;height:14px;border-radius:50%;display:inline-block;border:1px solid #d8d1e3;flex:0 0 auto}

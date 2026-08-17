@@ -1,47 +1,79 @@
-# Twitch VOD Chat Exporter V5
+# Twitch VOD Chat Exporter V6
 
-A V5 corrige a coluna `Badge`.
+A V6 adiciona duas informações pedidas ao export:
 
-O TwitchDownloader documenta que o chat JSON contém dados ricos e que
-`--embed-images` inclui badges e emotes da Twitch no arquivo. Também documenta
-`chatupdate --embed-missing` para completar badges que não estejam no JSON. citeturn1search1
+- **meses de inscrição** no badge `Subscriber`;
+- **cor do usuário** como hexadecimal (`#RRGGBB`).
 
-A V5 não depende apenas de um único caminho do JSON. Ela procura badges em:
-- `message.userBadges`
-- `message.badges`
-- `comment.userBadges`
-- `comment.badges`
-- outros campos contendo `badge`
-- estruturas aninhadas de até quatro níveis
+## Como a cor é obtida
 
-Também aceita os nomes de campos de badge mais comuns (`setID`, `setId`,
-`badgeID`, `badgeId`, `name`, `type`, `id`).
+O chat replay da Twitch coloca a cor no próprio objeto `message` como `userColor`.
+Exemplos reais do formato do chat incluem:
 
-## Formato
+`"userColor": "#1E90FF"`
 
-A coluna Badge usa somente o nome do badge, como você pediu:
+e, quando o usuário não tem uma cor definida, `userColor` pode ser `null`. citeturn5search1
 
-`broadcaster|moderator|subscriber`
+A Twitch Chat Downloader também adicionou explicitamente a cor do usuário ao
+export e mantém esse dado no histórico do projeto. citeturn3search0
 
-Exemplos:
+O nosso parser procura:
 
-`moderator`
+- `message.userColor`
+- `message.user_color`
+- `comment.userColor`
+- `comment.user_color`
+- `commenter.color`
 
-`subscriber`
+Cores nomeadas também são convertidas para hex.
 
-`subscriber|vip`
+## Subscriber + meses
 
-`broadcaster`
+Os badges do comentário são estruturas com `setID` e `version`. Para o badge
+`subscriber`, o `version` representa o nível/tempo do badge e pode ser usado
+como número de meses. Uma implementação de referência do ecossistema Twitch
+faz exatamente esse cruzamento e expõe `months` a partir da versão do badge.
+citeturn5search2
 
-Para subscriber, a versão do badge (meses) não é colocada no campo; o objetivo
-é manter a coluna simples, no estilo do ExportComments.
+Assim, o export fica, por exemplo:
 
-## Importante
+`Subscriber 12 meses`
 
-`--embed-images` é usado durante o download, mas as imagens em si não são
-colocadas no CSV/XLSX. A coluna contém os nomes dos badges.
+`Moderator`
 
-O TwitchDownloader também oferece `chatupdate --embed-missing` para baixar
-badges ausentes de um JSON já existente. citeturn1search1turn1search0
+`VIP`
 
-Não é necessário Client ID ou Client Secret da Twitch.
+`Broadcaster`
+
+ou:
+
+`Subscriber 24 meses | VIP`
+
+## Colunas
+
+```text
+Date
+Comment video time
+Badge
+Name
+Color
+Comment
+```
+
+Exemplo:
+
+```text
+2026-08-09T19:04:19.622Z
+00:03:16.000
+Subscriber 12 meses
+jozinho
+#1E90FF
+online só agora?
+```
+
+A cor é exportada como texto hexadecimal para funcionar no CSV e no Excel.
+
+## Fonte
+
+O Twitch Chat Downloader atual informa que seu export contém cor de usuário e
+badges, e o TwitchDownloader possui suporte a badges no chat render. citeturn3search0turn0search2
