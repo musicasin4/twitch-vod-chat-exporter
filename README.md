@@ -1,33 +1,47 @@
-# Twitch VOD Chat Exporter V4
+# Twitch VOD Chat Exporter V5
 
-V4 corrige dois problemas da primeira implementação do conversor:
+A V5 corrige a coluna `Badge`.
 
-- `Comment video time` agora procura todos os formatos comuns de timestamp do JSON do TwitchDownloader.
-- O download usa `--embed-images`, fazendo o TwitchDownloader incluir os dados de badges da Twitch no JSON.
-- O parser aceita `userBadges`/`badges` tanto no objeto da mensagem quanto no comentário.
-- O CSV/XLSX mantém exatamente as colunas:
-  `Date, Comment video time, Badge, Name, Comment`
+O TwitchDownloader documenta que o chat JSON contém dados ricos e que
+`--embed-images` inclui badges e emotes da Twitch no arquivo. Também documenta
+`chatupdate --embed-missing` para completar badges que não estejam no JSON. citeturn1search1
 
-O TwitchDownloader documenta que o JSON contém as informações originais do chat e que
-`--embed-images` inclui badges/emotes/cheermotes da Twitch no arquivo. O projeto também
-documenta que o chatdownload é destinado a VODs, highlights e clips. citeturn3search0turn3search1
+A V5 não depende apenas de um único caminho do JSON. Ela procura badges em:
+- `message.userBadges`
+- `message.badges`
+- `comment.userBadges`
+- `comment.badges`
+- outros campos contendo `badge`
+- estruturas aninhadas de até quatro níveis
 
-## Deploy
+Também aceita os nomes de campos de badge mais comuns (`setID`, `setId`,
+`badgeID`, `badgeId`, `name`, `type`, `id`).
+
+## Formato
+
+A coluna Badge usa somente o nome do badge, como você pediu:
+
+`broadcaster|moderator|subscriber`
+
+Exemplos:
+
+`moderator`
+
+`subscriber`
+
+`subscriber|vip`
+
+`broadcaster`
+
+Para subscriber, a versão do badge (meses) não é colocada no campo; o objetivo
+é manter a coluna simples, no estilo do ExportComments.
+
+## Importante
+
+`--embed-images` é usado durante o download, mas as imagens em si não são
+colocadas no CSV/XLSX. A coluna contém os nomes dos badges.
+
+O TwitchDownloader também oferece `chatupdate --embed-missing` para baixar
+badges ausentes de um JSON já existente. citeturn1search1turn1search0
 
 Não é necessário Client ID ou Client Secret da Twitch.
-
-Mantenha o Build Command do V3 que instala o TwitchDownloaderCLI.
-
-Após o deploy, `/api/health` deve retornar `version: "4.0.0"` e
-`twitchDownloaderInstalled: true`.
-
-## Observação sobre o horário
-
-`Comment video time` é o tempo relativo ao início do VOD, e não a hora do relógio.
-Exemplo:
-
-`00:03:16.000` = mensagem enviada aproximadamente 3 min 16 s após o início do VOD.
-
-A Twitch historicamente disponibiliza o offset do comentário em segundos; o próprio
-ecossistema do TwitchDownloader também possui recursos específicos relacionados a
-timestamps/dispersion. citeturn4search0turn3search5

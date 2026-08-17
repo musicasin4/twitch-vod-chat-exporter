@@ -130,29 +130,126 @@ function firstNumber(obj, keys) {
   return 0;
 }
 
-function badgeString(comment) {
-  const message = comment?.message || {};
-  const badgeLists = [
-    message.userBadges,
-    message.badges,
-    comment?.userBadges,
-    comment?.badges
-  ];
+const BADGE_NAMES = {
+  broadcaster: "broadcaster",
+  moderator: "moderator",
+  vip: "vip",
+  subscriber: "subscriber",
+  founder: "founder",
+  partner: "partner",
+  staff: "staff",
+  admin: "admin",
+  global_mod: "global_mod",
+  turbo: "turbo",
+  premium: "prime",
+  prime: "prime",
+  bits: "bits",
+  bits_badge: "bits",
+  artist: "artist",
+  predictions: "predictions",
+  sub_gifter: "sub_gifter",
+  sub_gift: "sub_gifter",
+  no_audio: "no_audio",
+  no_video: "no_video",
+  twitchbot: "twitchbot"
+};
 
-  for (const badges of badgeLists) {
-    if (!Array.isArray(badges) || !badges.length) continue;
+function normalizeBadgeName(value) {
+  const key = String(value ?? "").trim().toLowerCase();
+  if (!key) return "";
 
-    const result = badges.map(b => {
-      if (typeof b === "string") return b;
-      const set = b?.setID ?? b?.setId ?? b?.name ?? b?.badgeID ?? b?.badgeId ?? "";
-      const version = b?.version ?? b?.versionID ?? b?.versionId ?? "";
-      return version ? `${set}:${version}` : set;
-    }).filter(Boolean);
+  // Twitch set IDs are the most useful value for an export.
+  if (BADGE_NAMES[key]) return BADGE_NAMES[key];
 
-    if (result.length) return result.join("|");
+  // Some badge schemas expose a human-readable display name instead.
+  const cleaned = key
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return cleaned;
+}
+
+function badgeEntryToName(badge) {
+  if (typeof badge === "string") {
+    return normalizeBadgeName(badge);
   }
 
-  return "";
+  if (!badge || typeof badge !== "object") return "";
+
+  const set =
+    badge.setID ??
+    badge.setId ??
+    badge.set_id ??
+    badge.badgeID ??
+    badge.badgeId ??
+    badge.name ??
+    badge.type ??
+    badge.id ??
+    "";
+
+  return normalizeBadgeName(set);
+}
+
+function findBadgeArrays(value, depth = 0, found = []) {
+  if (!value || typeof value !== "object" || depth > 4) return found;
+
+  if (Array.isArray(value)) {
+    // A Twitch badge array normally contains objects with setID/version.
+    if (value.some(x =>
+      typeof x === "string" ||
+      (x && typeof x === "object" &&
+        ("setID" in x || "setId" in x || "badgeID" in x || "badgeId" in x))
+    )) {
+      found.push(value);
+    }
+    for (const item of value) {
+      if (item && typeof item === "object") {
+        findBadgeArrays(item, depth + 1, found);
+      }
+    }
+    return found;
+  }
+
+  for (const [key, val] of Object.entries(value)) {
+    if (/badge/i.test(key) && Array.isArray(val)) {
+      found.push(val);
+    } else if (val && typeof val === "object") {
+      findBadgeArrays(val, depth + 1, found);
+    }
+  }
+
+  return found;
+}
+
+function badgeString(comment) {
+  const arrays = findBadgeArrays(comment);
+  const names = [];
+
+  for (const badges of arrays) {
+    for (const badge of badges) {
+      const name = badgeEntryToName(badge);
+      if (name && !names.includes(name)) names.push(name);
+    }
+  }
+
+  // Fallback for schemas that expose role flags but not the badge array.
+  // This also makes exports useful when a badge image could not be embedded.
+  const message = comment?.message || {};
+  const roleFlags = [
+    ["broadcaster", ["isBroadcaster", "is_broadcaster"]],
+    ["moderator", ["isModerator", "is_moderator", "mod"]],
+    ["vip", ["isVip", "isVIP", "is_vip", "vip"]],
+    ["subscriber", ["isSubscriber", "is_subscriber", "subscriber"]]
+  ];
+
+  for (const [name, keys] of roleFlags) {
+    if (keys.some(k => message?.[k] === true || comment?.[k] === true)) {
+      if (!names.includes(name)) names.push(name);
+    }
+  }
+
+  return names.join("|");
 }
 
 function messageText(message) {
@@ -275,7 +372,7 @@ app.get("/api/health", (req, res) => {
   res.json({
     ok: true,
     twitchDownloaderInstalled: fs.existsSync(CLI),
-    version: "4.0.0"
+    version: "5.0.0"
   });
 });
 
