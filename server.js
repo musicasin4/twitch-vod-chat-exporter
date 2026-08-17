@@ -43,6 +43,10 @@ function runChatDownloader(vodId, outputFile) {
       "chatdownload",
       "--id", vodId,
       "--compression", "None",
+      "--embed-images",
+      "--bttv=false",
+      "--ffz=false",
+      "--stv=false",
       "--threads", "1",
       "--log-level", "Status,Info,Warning,Error",
       "--banner=false",
@@ -98,33 +102,93 @@ function messageText(message) {
 }
 
 function findComments(root) {
-  // TwitchDownloader's current JSON is a single object with a comments array.
-  if (Array.isArray(root?.comments)) return root.comments;
+  if (!root || typeof root !== "object") return [];
 
-  // Be tolerant of older/alternate representations.
-  if (Array.isArray(root?.comments?.edges)) {
+  // Current TwitchDownloader JSON: comments is usually an array.
+  if (Array.isArray(root.comments)) return root.comments;
+
+  // GraphQL-shaped/older representations.
+  if (Array.isArray(root.comments?.edges)) {
     return root.comments.edges.map(x => x?.node).filter(Boolean);
   }
 
+  if (Array.isArray(root.data?.comments)) return root.data.comments;
+  if (Array.isArray(root.data?.comments?.edges)) {
+    return root.data.comments.edges.map(x => x?.node).filter(Boolean);
+  }
+
   return [];
+}
+
+function firstNumber(obj, keys) {
+  for (const key of keys) {
+    if (obj && obj[key] !== undefined && obj[key] !== null && obj[key] !== "") {
+      const n = Number(obj[key]);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return 0;
+}
+
+function badgeString(comment) {
+  const message = comment?.message || {};
+  const badgeLists = [
+    message.userBadges,
+    message.badges,
+    comment?.userBadges,
+    comment?.badges
+  ];
+
+  for (const badges of badgeLists) {
+    if (!Array.isArray(badges) || !badges.length) continue;
+
+    const result = badges.map(b => {
+      if (typeof b === "string") return b;
+      const set = b?.setID ?? b?.setId ?? b?.name ?? b?.badgeID ?? b?.badgeId ?? "";
+      const version = b?.version ?? b?.versionID ?? b?.versionId ?? "";
+      return version ? `${set}:${version}` : set;
+    }).filter(Boolean);
+
+    if (result.length) return result.join("|");
+  }
+
+  return "";
+}
+
+function messageText(message) {
+  if (typeof message === "string") return message;
+  if (!message) return "";
+
+  if (typeof message.text === "string") return message.text;
+
+  if (Array.isArray(message.fragments)) {
+    return message.fragments.map(f => f?.text || "").join("");
+  }
+
+  return "";
 }
 
 function normalizeChat(json) {
   const comments = findComments(json);
 
   return comments.map(c => {
-    const commenter = c?.commenter || c?.user || {};
-    const message = c?.message || {};
+    const commenter = c?.commenter || c?.user || c?.author || {};
+    const message = c?.message || c?.content || {};
+
+    const offset = firstNumber(c, [
+      "contentOffsetSeconds",
+      "content_offset_seconds",
+      "contentOffset",
+      "offsetSeconds",
+      "offset",
+      "videoTimeSeconds",
+      "video_time_seconds"
+    ]);
 
     return {
-      Date: c?.createdAt || c?.created_at || "",
-      "Comment video time": Number(
-        c?.contentOffsetSeconds ??
-        c?.contentOffset ??
-        c?.offsetSeconds ??
-        0
-      ),
-      Badge: badgeString(message),
+      Date: c?.createdAt || c?.created_at || c?.timestamp || "",
+      "Comment video time": offset,
+      Badge: badgeString(c),
       Name: commenter.displayName || commenter.login || commenter.name || "",
       Comment: messageText(message)
     };
@@ -211,7 +275,7 @@ app.get("/api/health", (req, res) => {
   res.json({
     ok: true,
     twitchDownloaderInstalled: fs.existsSync(CLI),
-    version: "3.0.0"
+    version: "4.0.0"
   });
 });
 

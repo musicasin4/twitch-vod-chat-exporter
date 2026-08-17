@@ -1,42 +1,33 @@
-# Twitch VOD Chat Exporter V3
+# Twitch VOD Chat Exporter V4
 
-## Por que a V3 existe?
+V4 corrige dois problemas da primeira implementação do conversor:
 
-A implementação anterior chamava diretamente o GraphQL interno da Twitch. Em 2026 a
-Twitch passou a exigir uma verificação de integridade nesse fluxo, causando:
+- `Comment video time` agora procura todos os formatos comuns de timestamp do JSON do TwitchDownloader.
+- O download usa `--embed-images`, fazendo o TwitchDownloader incluir os dados de badges da Twitch no JSON.
+- O parser aceita `userBadges`/`badges` tanto no objeto da mensagem quanto no comentário.
+- O CSV/XLSX mantém exatamente as colunas:
+  `Date, Comment video time, Badge, Name, Comment`
 
-`failed integrity check`
+O TwitchDownloader documenta que o JSON contém as informações originais do chat e que
+`--embed-images` inclui badges/emotes/cheermotes da Twitch no arquivo. O projeto também
+documenta que o chatdownload é destinado a VODs, highlights e clips. citeturn3search0turn3search1
 
-A V3 abandona essa chamada direta e usa o **TwitchDownloaderCLI**, projeto open-source
-que possui um comando específico `chatdownload` para baixar o chat de VODs. O projeto
-documenta suporte a VODs, highlights e clips e gera JSON/HTML/TXT. 
+## Deploy
 
-O servidor converte o JSON para:
+Não é necessário Client ID ou Client Secret da Twitch.
 
-`Date,"Comment video time",Badge,Name,Comment`
+Mantenha o Build Command do V3 que instala o TwitchDownloaderCLI.
 
-e oferece CSV e XLSX.
+Após o deploy, `/api/health` deve retornar `version: "4.0.0"` e
+`twitchDownloaderInstalled: true`.
 
-## Deploy no Render
+## Observação sobre o horário
 
-Não precisa de Client ID nem Client Secret da Twitch.
+`Comment video time` é o tempo relativo ao início do VOD, e não a hora do relógio.
+Exemplo:
 
-O `render.yaml` baixa automaticamente a versão Linux x64 do TwitchDownloaderCLI
-durante o build e instala o binário em `bin/TwitchDownloaderCLI`.
+`00:03:16.000` = mensagem enviada aproximadamente 3 min 16 s após o início do VOD.
 
-Build:
-
-`npm install` + download do CLI
-
-Start:
-
-`npm start`
-
-## Importante
-
-O TwitchDownloaderCLI também depende de mecanismos de acesso da Twitch e pode ter
-limitações para VODs privados, sub-only ou indisponíveis. Consulte a documentação
-do projeto para detalhes.
-
-Projeto TwitchDownloader:
-https://github.com/lay295/TwitchDownloader
+A Twitch historicamente disponibiliza o offset do comentário em segundos; o próprio
+ecossistema do TwitchDownloader também possui recursos específicos relacionados a
+timestamps/dispersion. citeturn4search0turn3search5
