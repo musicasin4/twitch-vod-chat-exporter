@@ -1,52 +1,31 @@
-# Twitch VOD Chat Exporter — Render
+# Twitch VOD Chat Exporter V2
 
-Aplicação Node.js/Express para exportar o chat replay de VODs da Twitch para CSV e Excel.
+Esta versão corrige o erro `The "Client-ID" header is invalid`.
 
-## Deploy no Render
+A versão anterior enviava o Client ID criado no Developer Console para
+`gql.twitch.tv/gql`. Esse endpoint interno rejeita Client IDs de terceiros.
+A V2 usa o Client ID público do cliente web da Twitch para a operação de chat replay.
 
-1. Crie um repositório no GitHub e envie todos os arquivos deste projeto.
-2. Entre no Render e escolha **New → Web Service**.
-3. Conecte o repositório.
-4. O `render.yaml` já define:
-   - Node
-   - `npm install`
-   - `npm start`
-   - plano Free
-   - `TWITCH_CLIENT_ID` como variável secreta
-5. No serviço, preencha `TWITCH_CLIENT_ID` com o Client ID do seu aplicativo Twitch.
-6. Faça o deploy.
+## Render
 
-Depois do deploy o Render fornecerá uma URL pública `*.onrender.com`.
+Não é mais necessário configurar `TWITCH_CLIENT_ID` no Render para o chat.
 
-## Twitch Client ID
+Se o serviço já existe, basta fazer o deploy desta versão. O `render.yaml` configura
+Node, `npm install`, `npm start` e o plano Free.
 
-Crie um aplicativo em:
+## Limitação
 
-https://dev.twitch.tv/console/apps
+O histórico do chat de VOD não possui endpoint Helix público documentado. Esta solução
+usa `VideoCommentsByOffsetOrCursor`, uma operação GraphQL interna/não documentada.
+A Twitch pode alterar ou bloquear esse endpoint.
 
-Use apenas o Client ID no Render. Nunca coloque o Client Secret no frontend.
+O projeto é independente da Twitch e deve ser usado respeitando os termos aplicáveis.
 
-## Rodar localmente
+## Local
 
 ```bash
 npm install
-```
-
-PowerShell:
-
-```powershell
-$env:TWITCH_CLIENT_ID="SEU_CLIENT_ID"
 npm start
 ```
 
 Abra `http://localhost:3000`.
-
-## Limitações
-
-O histórico completo do chat replay de VOD não é exposto pela Twitch através de um endpoint Helix público. A aplicação usa o GraphQL interno usado pela reprodução de VOD, portanto essa parte pode mudar sem aviso.
-
-O plano Free do Render é adequado para testes/projetos pessoais, mas possui limitações e o serviço pode entrar em suspensão após período de inatividade.
-
-## Deploy automático
-
-Ao conectar o GitHub ao Render, novos pushes no branch configurado podem disparar novos deploys automaticamente.

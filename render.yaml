@@ -6,7 +6,5 @@ services:
     buildCommand: npm install
     startCommand: npm start
     envVars:
-      - key: TWITCH_CLIENT_ID
-        sync: false
       - key: NODE_VERSION
         value: 20.18.0
