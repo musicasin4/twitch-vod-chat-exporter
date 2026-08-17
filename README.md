@@ -1,31 +1,42 @@
-# Twitch VOD Chat Exporter V2
+# Twitch VOD Chat Exporter V3
 
-Esta versão corrige o erro `The "Client-ID" header is invalid`.
+## Por que a V3 existe?
 
-A versão anterior enviava o Client ID criado no Developer Console para
-`gql.twitch.tv/gql`. Esse endpoint interno rejeita Client IDs de terceiros.
-A V2 usa o Client ID público do cliente web da Twitch para a operação de chat replay.
+A implementação anterior chamava diretamente o GraphQL interno da Twitch. Em 2026 a
+Twitch passou a exigir uma verificação de integridade nesse fluxo, causando:
 
-## Render
+`failed integrity check`
 
-Não é mais necessário configurar `TWITCH_CLIENT_ID` no Render para o chat.
+A V3 abandona essa chamada direta e usa o **TwitchDownloaderCLI**, projeto open-source
+que possui um comando específico `chatdownload` para baixar o chat de VODs. O projeto
+documenta suporte a VODs, highlights e clips e gera JSON/HTML/TXT. 
 
-Se o serviço já existe, basta fazer o deploy desta versão. O `render.yaml` configura
-Node, `npm install`, `npm start` e o plano Free.
+O servidor converte o JSON para:
 
-## Limitação
+`Date,"Comment video time",Badge,Name,Comment`
 
-O histórico do chat de VOD não possui endpoint Helix público documentado. Esta solução
-usa `VideoCommentsByOffsetOrCursor`, uma operação GraphQL interna/não documentada.
-A Twitch pode alterar ou bloquear esse endpoint.
+e oferece CSV e XLSX.
 
-O projeto é independente da Twitch e deve ser usado respeitando os termos aplicáveis.
+## Deploy no Render
 
-## Local
+Não precisa de Client ID nem Client Secret da Twitch.
 
-```bash
-npm install
-npm start
-```
+O `render.yaml` baixa automaticamente a versão Linux x64 do TwitchDownloaderCLI
+durante o build e instala o binário em `bin/TwitchDownloaderCLI`.
 
-Abra `http://localhost:3000`.
+Build:
+
+`npm install` + download do CLI
+
+Start:
+
+`npm start`
+
+## Importante
+
+O TwitchDownloaderCLI também depende de mecanismos de acesso da Twitch e pode ter
+limitações para VODs privados, sub-only ou indisponíveis. Consulte a documentação
+do projeto para detalhes.
+
+Projeto TwitchDownloader:
+https://github.com/lay295/TwitchDownloader

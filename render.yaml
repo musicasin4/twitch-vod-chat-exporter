@@ -3,7 +3,12 @@ services:
     name: twitch-vod-chat-exporter
     runtime: node
     plan: free
-    buildCommand: npm install
+    buildCommand: |
+      npm install &&
+      mkdir -p bin &&
+      curl -L --fail --retry 3 -o /tmp/twitchdownloader.zip https://github.com/lay295/TwitchDownloader/releases/download/1.56.5/TwitchDownloaderCLI-1.56.5-Linux-x64.zip &&
+      unzip -o /tmp/twitchdownloader.zip -d bin &&
+      chmod +x bin/TwitchDownloaderCLI
     startCommand: npm start
     envVars:
       - key: NODE_VERSION

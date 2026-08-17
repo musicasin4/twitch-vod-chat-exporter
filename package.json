@@ -1,10 +1,17 @@
 {
   "name": "twitch-vod-chat-exporter",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
-  "description": "Exporta o chat replay de VODs da Twitch para CSV e XLSX.",
+  "description": "Exporta chat replay de VODs da Twitch para CSV e XLSX usando TwitchDownloaderCLI.",
   "main": "server.js",
-  "scripts": { "start": "node server.js" },
-  "engines": { "node": ">=20 <21" },
-  "dependencies": { "express": "^5.1.0", "xlsx": "^0.18.5" }
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20 <21"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "xlsx": "^0.18.5"
+  }
 }

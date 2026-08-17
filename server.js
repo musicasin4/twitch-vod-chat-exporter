@@ -1,163 +1,177 @@
 const express = require("express");
 const path = require("path");
+const fs = require("fs");
+const os = require("os");
+const crypto = require("crypto");
+const { spawn } = require("child_process");
 const XLSX = require("xlsx");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const CLI = process.env.TWITCHDOWNLOADER_PATH ||
+  path.join(__dirname, "bin", "TwitchDownloaderCLI");
 
-// Twitch's public Client IDs are intended for Helix.
-// The historical VOD chat operation is an undocumented GQL operation
-// used by Twitch's web client and rejects third-party Client IDs.
-const GQL_CLIENT_ID =
-  process.env.TWITCH_GQL_CLIENT_ID ||
-  "kimne78kx3ncx6brgo4mv6wki5h1ko";
-
-const GQL_URL = "https://gql.twitch.tv/gql";
-const QUERY_HASH =
-  "b70a3591ff0f4e0313d126c6a1502d79a1c02baebb288227c582044aa76adf6a";
-
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "1mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 function extractVodId(input) {
   const value = String(input || "").trim();
   if (/^\d+$/.test(value)) return value;
-  const m = value.match(/(?:twitch\.tv\/)?videos\/(\d+)/i);
-  return m ? m[1] : null;
+
+  const patterns = [
+    /twitch\.tv\/videos\/(\d+)/i,
+    /\/videos\/(\d+)/i
+  ];
+
+  for (const p of patterns) {
+    const m = value.match(p);
+    if (m) return m[1];
+  }
+
+  return null;
 }
 
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function twitchGraphQL(vodId, variables) {
-  const payload = [{
-    operationName: "VideoCommentsByOffsetOrCursor",
-    variables: { videoID: vodId, ...variables },
-    extensions: {
-      persistedQuery: {
-        version: 1,
-        sha256Hash: QUERY_HASH
-      }
+function runChatDownloader(vodId, outputFile) {
+  return new Promise((resolve, reject) => {
+    if (!fs.existsSync(CLI)) {
+      return reject(new Error(
+        "TwitchDownloaderCLI não está instalado. Verifique o build do Render."
+      ));
     }
-  }];
 
-  const response = await fetch(GQL_URL, {
-    method: "POST",
-    headers: {
-      "Client-ID": GQL_CLIENT_ID,
-      "Content-Type": "application/json",
-      "Origin": "https://www.twitch.tv",
-      "Referer": "https://www.twitch.tv/"
-    },
-    body: JSON.stringify(payload)
+    const args = [
+      "chatdownload",
+      "--id", vodId,
+      "--compression", "None",
+      "--threads", "1",
+      "--log-level", "Status,Info,Warning,Error",
+      "--banner=false",
+      "--collision", "Overwrite",
+      "-o", outputFile
+    ];
+
+    const child = spawn(CLI, args, {
+      cwd: path.dirname(CLI),
+      env: process.env
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", chunk => { stdout += chunk.toString(); });
+    child.stderr.on("data", chunk => { stderr += chunk.toString(); });
+
+    child.on("error", err => reject(err));
+
+    child.on("close", code => {
+      if (code !== 0) {
+        const details = (stderr || stdout).trim();
+        return reject(new Error(
+          details || `TwitchDownloader terminou com código ${code}.`
+        ));
+      }
+      resolve({ stdout, stderr });
+    });
   });
-
-  const text = await response.text();
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    const err = new Error(`Resposta inválida da Twitch (HTTP ${response.status}).`);
-    err.status = 502;
-    throw err;
-  }
-
-  if (!response.ok) {
-    const msg = data?.message || `Twitch respondeu HTTP ${response.status}.`;
-    const err = new Error(msg);
-    err.status = response.status;
-    throw err;
-  }
-
-  if (data?.[0]?.errors?.length) {
-    const err = new Error(data[0].errors.map(e => e.message).join("; "));
-    err.status = 502;
-    throw err;
-  }
-
-  const video = data?.[0]?.data?.video;
-  if (!video) {
-    const err = new Error("VOD não encontrado ou chat replay indisponível.");
-    err.status = 404;
-    throw err;
-  }
-
-  return video;
 }
 
-function badgeNames(message) {
-  return (message?.userBadges || [])
-    .map(b => `${b?.setID || ""}:${b?.version || ""}`)
-    .join("|");
+function badgeString(message) {
+  const badges = message?.userBadges || message?.badges || [];
+  return badges.map(b => {
+    const set = b?.setID ?? b?.setId ?? b?.name ?? "";
+    const version = b?.version ?? "";
+    return version ? `${set}:${version}` : set;
+  }).filter(Boolean).join("|");
 }
 
-function fragmentsToText(message) {
-  return (message?.fragments || []).map(f => f?.text || "").join("");
+function messageText(message) {
+  if (typeof message === "string") return message;
+  if (!message) return "";
+
+  if (typeof message.text === "string") return message.text;
+
+  if (Array.isArray(message.fragments)) {
+    return message.fragments.map(f => f?.text || "").join("");
+  }
+
+  return "";
 }
 
-function normalizeComment(node) {
-  const message = node?.message || {};
-  const commenter = node?.commenter || {};
-  return {
-    Date: node?.createdAt || "",
-    "Comment video time": Number(node?.contentOffsetSeconds || 0),
-    Badge: badgeNames(message),
-    Name: commenter.displayName || commenter.login || "",
-    Comment: fragmentsToText(message)
-  };
+function findComments(root) {
+  // TwitchDownloader's current JSON is a single object with a comments array.
+  if (Array.isArray(root?.comments)) return root.comments;
+
+  // Be tolerant of older/alternate representations.
+  if (Array.isArray(root?.comments?.edges)) {
+    return root.comments.edges.map(x => x?.node).filter(Boolean);
+  }
+
+  return [];
+}
+
+function normalizeChat(json) {
+  const comments = findComments(json);
+
+  return comments.map(c => {
+    const commenter = c?.commenter || c?.user || {};
+    const message = c?.message || {};
+
+    return {
+      Date: c?.createdAt || c?.created_at || "",
+      "Comment video time": Number(
+        c?.contentOffsetSeconds ??
+        c?.contentOffset ??
+        c?.offsetSeconds ??
+        0
+      ),
+      Badge: badgeString(message),
+      Name: commenter.displayName || commenter.login || commenter.name || "",
+      Comment: messageText(message)
+    };
+  });
 }
 
 app.post("/api/chat", async (req, res) => {
+  const vodId = extractVodId(req.body?.vod);
+  if (!vodId) {
+    return res.status(400).json({
+      error: "Informe uma URL de VOD da Twitch ou um ID numérico."
+    });
+  }
+
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "twitch-chat-"));
+  const jsonFile = path.join(tempDir, `${crypto.randomUUID()}.json`);
+
   try {
-    const vodId = extractVodId(req.body?.vod);
-    if (!vodId) {
-      return res.status(400).json({
-        error: "Informe uma URL de VOD da Twitch ou um ID numérico."
-      });
+    const result = await runChatDownloader(vodId, jsonFile);
+
+    if (!fs.existsSync(jsonFile)) {
+      throw new Error("O TwitchDownloader não gerou o arquivo de chat.");
     }
 
-    const comments = [];
-    let cursor = null;
-    let pages = 0;
+    const raw = fs.readFileSync(jsonFile, "utf8");
+    const parsed = JSON.parse(raw);
+    const comments = normalizeChat(parsed);
 
-    while (true) {
-      const video = await twitchGraphQL(
-        vodId,
-        cursor ? { cursor } : { contentOffsetSeconds: 0 }
+    if (!comments.length) {
+      throw new Error(
+        "O download terminou, mas o VOD não retornou mensagens de chat."
       );
-
-      const edges = video.comments?.edges || [];
-      for (const edge of edges) {
-        if (edge?.node) comments.push(normalizeComment(edge.node));
-      }
-
-      pages++;
-      const pageInfo = video.comments?.pageInfo || {};
-      if (!pageInfo.hasNextPage || !edges.length) break;
-
-      cursor = edges[edges.length - 1]?.cursor;
-      if (!cursor) break;
-
-      await sleep(120);
     }
 
     res.json({
-      vod: {
-        id: vodId,
-        title: "",
-        createdAt: "",
-        lengthSeconds: null
-      },
+      vod: { id: vodId },
       count: comments.length,
-      pages,
       comments
     });
   } catch (err) {
-    console.error(err);
-    res.status(err.status || 500).json({
-      error: err.message || "Erro inesperado ao baixar o chat."
+    console.error("CHAT DOWNLOAD ERROR:", err);
+    res.status(502).json({
+      error: err.message || "Não foi possível baixar o chat.",
+      details: process.env.NODE_ENV === "development" ? String(err.stack || "") : undefined
     });
+  } finally {
+    try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
   }
 });
 
@@ -169,6 +183,7 @@ app.post("/api/xlsx", (req, res) => {
     const sheet = XLSX.utils.json_to_sheet(rows, {
       header: ["Date", "Comment video time", "Badge", "Name", "Comment"]
     });
+
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, sheet, "Chat");
 
@@ -186,9 +201,18 @@ app.post("/api/xlsx", (req, res) => {
       'attachment; filename="twitch-chat.xlsx"'
     );
     res.send(buffer);
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(500).send("Erro ao gerar XLSX.");
   }
+});
+
+app.get("/api/health", (req, res) => {
+  res.json({
+    ok: true,
+    twitchDownloaderInstalled: fs.existsSync(CLI),
+    version: "3.0.0"
+  });
 });
 
 app.use((req, res) => {
@@ -196,5 +220,5 @@ app.use((req, res) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Twitch VOD Chat Exporter: http://0.0.0.0:${PORT}`);
+  console.log(`Twitch VOD Chat Exporter V3 listening on ${PORT}`);
 });
