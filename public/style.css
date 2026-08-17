@@ -1,0 +1,45 @@
+:root{
+  font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  color:#17141f;background:#f5f3f8;
+}
+*{box-sizing:border-box}
+body{margin:0}
+.container{max-width:1120px;margin:0 auto;padding:48px 22px 70px}
+.hero{margin-bottom:24px}
+.eyebrow{font-size:12px;font-weight:800;letter-spacing:.12em;color:#7446d7}
+h1{font-size:42px;line-height:1.05;margin:8px 0 10px}
+h2{font-size:22px;margin:7px 0}
+p{color:#6d6875;margin:0;line-height:1.55}
+.card{background:#fff;border:1px solid #e7e1ef;border-radius:18px;padding:24px;box-shadow:0 8px 30px rgba(32,20,52,.06);margin-top:18px}
+label{display:block;font-weight:700;margin-bottom:9px}
+.input-row{display:flex;gap:10px}
+input[type=text],input:not([type]){width:100%}
+input{font:inherit}
+#vod{flex:1;padding:14px 15px;border:1px solid #d8d1e3;border-radius:11px;outline:none}
+#vod:focus{border-color:#7b4be0;box-shadow:0 0 0 3px #7b4be01c}
+button{border:0;border-radius:11px;padding:13px 18px;font:inherit;font-weight:800;background:#7446d7;color:#fff;cursor:pointer}
+button:hover{filter:brightness(.96)}
+button:disabled{opacity:.55;cursor:wait}
+.secondary{background:#fff;color:#5e32bd;border:1px solid #cfc1e7}
+.options{margin-top:13px;font-size:14px}
+.options label{font-weight:500;color:#615b69}
+.status{margin-top:18px;padding:13px 15px;border-radius:10px;background:#f2edf9;color:#56319b}
+.status.error{background:#fff0f0;color:#b42318}
+.progress-wrap{margin-top:14px}
+.progress{height:8px;background:#eeeaf3;border-radius:999px;overflow:hidden}
+#progress{height:100%;width:0;background:#7446d7;transition:width .2s}
+.result-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}
+.actions{display:flex;gap:9px;flex-wrap:wrap}
+.table-wrap{margin-top:22px;overflow:auto;max-height:540px;border:1px solid #ece7f1;border-radius:12px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid #eeeaf2;white-space:nowrap}
+th{position:sticky;top:0;background:#faf9fc;z-index:1}
+td:last-child{white-space:normal;min-width:300px}
+.note{margin:18px 2px;color:#756e7e;font-size:13px;line-height:1.6}
+.hidden{display:none}
+@media(max-width:720px){
+  .container{padding:28px 14px}
+  h1{font-size:32px}
+  .input-row{flex-direction:column}
+  .result-head{flex-direction:column}
+}

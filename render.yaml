@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: twitch-vod-chat-exporter
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: TWITCH_CLIENT_ID
+        sync: false
+      - key: NODE_VERSION
+        value: 20.18.0
