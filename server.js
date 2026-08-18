@@ -79,111 +79,79 @@ function runChatDownloader(vodId, outputFile) {
   });
 }
 
-function badgeString(message) {
-  const badges = message?.userBadges || message?.badges || [];
-  return badges.map(b => {
-    const set = b?.setID ?? b?.setId ?? b?.name ?? "";
-    const version = b?.version ?? "";
-    return version ? `${set}:${version}` : set;
-  }).filter(Boolean).join("|");
-}
+function getEmbeddedBadgeMap(root) {
+  const map = new Map();
+  const sources = [
+    root?.twitchBadges,
+    root?.embedded?.twitchBadges,
+    root?.embeddedData?.twitchBadges,
+    root?.data?.twitchBadges
+  ].filter(Array.isArray);
 
-function messageText(message) {
-  if (typeof message === "string") return message;
-  if (!message) return "";
+  for (const list of sources) {
+    for (const badge of list) {
+      if (!badge || typeof badge !== "object") continue;
 
-  if (typeof message.text === "string") return message.text;
+      const setId = String(
+        badge.name ??
+        badge.setID ??
+        badge.setId ??
+        badge.set_id ??
+        ""
+      ).trim();
 
-  if (Array.isArray(message.fragments)) {
-    return message.fragments.map(f => f?.text || "").join("");
-  }
+      if (!setId) continue;
 
-  return "";
-}
+      const versions = badge.versions || badge.versionsById || {};
+      const versionMap = new Map();
 
-function findComments(root) {
-  if (!root || typeof root !== "object") return [];
+      if (Array.isArray(versions)) {
+        for (const v of versions) {
+          if (!v || typeof v !== "object") continue;
+          const id = String(v.version ?? v.id ?? v.versionID ?? "").trim();
+          if (id) versionMap.set(id, v);
+        }
+      } else if (versions && typeof versions === "object") {
+        for (const [id, v] of Object.entries(versions)) {
+          versionMap.set(String(id), v || {});
+        }
+      }
 
-  // Current TwitchDownloader JSON: comments is usually an array.
-  if (Array.isArray(root.comments)) return root.comments;
-
-  // GraphQL-shaped/older representations.
-  if (Array.isArray(root.comments?.edges)) {
-    return root.comments.edges.map(x => x?.node).filter(Boolean);
-  }
-
-  if (Array.isArray(root.data?.comments)) return root.data.comments;
-  if (Array.isArray(root.data?.comments?.edges)) {
-    return root.data.comments.edges.map(x => x?.node).filter(Boolean);
-  }
-
-  return [];
-}
-
-function firstNumber(obj, keys) {
-  for (const key of keys) {
-    if (obj && obj[key] !== undefined && obj[key] !== null && obj[key] !== "") {
-      const n = Number(obj[key]);
-      if (Number.isFinite(n)) return n;
+      map.set(setId.toLowerCase(), { setId, versions: versionMap });
     }
   }
-  return 0;
-}
 
-const BADGE_NAMES = {
-  broadcaster: "Broadcaster",
-  moderator: "Moderator",
-  vip: "VIP",
-  subscriber: "Subscriber",
-  founder: "Founder",
-  partner: "Partner",
-  staff: "Staff",
-  admin: "Admin",
-  global_mod: "Global Mod",
-  turbo: "Turbo",
-  premium: "Prime Gaming",
-  prime: "Prime Gaming",
-  bits: "Bits",
-  artist: "Artist",
-  predictions: "Predictions",
-  "no-audio": "No Audio",
-  "no-video": "No Video",
-  twitchbot: "Twitch Bot"
-};
-
-function normalizeBadgeName(value) {
-  const key = String(value ?? "").trim().toLowerCase();
-  if (!key) return "";
-  if (BADGE_NAMES[key]) return BADGE_NAMES[key];
-
-  return key
-    .replace(/[_-]+/g, " ")
-    .replace(/\b\w/g, c => c.toUpperCase())
-    .replace(/\s+/g, " ")
-    .trim();
+  return map;
 }
 
 function badgeObjectsFromMessage(comment) {
   const message = comment?.message || {};
-  const candidates = [
-    message.userBadges,
+  return [
     message.user_badges,
-    comment?.userBadges,
-    comment?.user_badges,
+    message.userBadges,
     message.badges,
+    comment?.user_badges,
+    comment?.userBadges,
     comment?.badges
-  ];
-
-  return candidates.filter(Array.isArray).flat();
+  ].filter(Array.isArray).flat();
 }
 
-function badgeNameAndVersion(badge) {
+function rawBadgeParts(badge) {
+  if (typeof badge === "string") {
+    const parts = badge.split("/");
+    return {
+      setId: String(parts[0] || "").trim(),
+      version: String(parts[1] || "").trim()
+    };
+  }
+
   if (!badge || typeof badge !== "object") {
-    return { name: "", version: "" };
+    return { setId: "", version: "" };
   }
 
   return {
-    name: normalizeBadgeName(
+    setId: String(
+      badge._id ??
       badge.setID ??
       badge.setId ??
       badge.set_id ??
@@ -192,45 +160,48 @@ function badgeNameAndVersion(badge) {
       badge.name ??
       badge.type ??
       ""
-    ),
+    ).trim(),
     version: String(
       badge.version ??
       badge.versionID ??
       badge.versionId ??
+      badge.id ??
       ""
-    )
+    ).trim()
   };
 }
 
-function badgeString(comment) {
-  const badges = badgeObjectsFromMessage(comment);
-  const names = [];
+function badgeString(comment, root) {
+  const map = getEmbeddedBadgeMap(root);
+  const labels = [];
 
-  for (const badge of badges) {
-    const { name, version } = badgeNameAndVersion(badge);
-    if (!name) continue;
+  for (const badge of badgeObjectsFromMessage(comment)) {
+    const { setId, version } = rawBadgeParts(badge);
+    if (!setId) continue;
 
-    // Twitch subscriber badges use version as the subscription month tier.
-    // Keep that useful information in the export.
-    const key = String(
-      badge.setID ??
-      badge.setId ??
-      badge.set_id ??
-      badge.badgeID ??
-      badge.badgeId ??
-      badge.name ??
-      ""
-    ).toLowerCase();
+    const entry = map.get(setId.toLowerCase());
+    const versionData = entry?.versions?.get(version);
 
-    const label =
-      key === "subscriber" && /^\d+$/.test(version)
-        ? `${name} ${version} meses`
-        : name;
+    // TwitchDownloader embeds the exact Twitch badge title here.
+    let label = String(
+      versionData?.title ??
+      entry?.setId ??
+      setId
+    ).trim();
 
-    if (!names.includes(label)) names.push(label);
+    // Subscriber versions correspond to subscription tenure.
+    if (
+      setId.toLowerCase() === "subscriber" &&
+      version &&
+      !/\b\d+\s*(meses?|months?)\b/i.test(label)
+    ) {
+      label = `${label} ${version} meses`;
+    }
+
+    if (label && !labels.includes(label)) labels.push(label);
   }
 
-  // Fallback for role flags in alternate JSON representations.
+  // Fallback for older JSON representations.
   const message = comment?.message || {};
   const roleFlags = [
     ["Broadcaster", ["isBroadcaster", "is_broadcaster"]],
@@ -241,11 +212,13 @@ function badgeString(comment) {
 
   for (const [name, keys] of roleFlags) {
     if (keys.some(k => message?.[k] === true || comment?.[k] === true)) {
-      if (!names.some(x => x.startsWith(name))) names.push(name);
+      if (!labels.some(x => x.toLowerCase().startsWith(name.toLowerCase()))) {
+        labels.push(name);
+      }
     }
   }
 
-  return names.join(" | ");
+  return labels.join(" | ");
 }
 
 const NAMED_TWITCH_COLORS = {
@@ -327,8 +300,13 @@ function normalizeChat(json) {
     return {
       Date: c?.createdAt || c?.created_at || c?.timestamp || "",
       "Comment video time": offset,
-      Badge: badgeString(c),
-      Name: commenter.displayName || commenter.login || commenter.name || "",
+      Badge: badgeString(c, json),
+      Name:
+        commenter.displayName ??
+        commenter.display_name ??
+        commenter.login ??
+        commenter.name ??
+        "",
       Color: extractUserColor(c),
       Comment: messageText(message)
     };
@@ -415,7 +393,7 @@ app.get("/api/health", (req, res) => {
   res.json({
     ok: true,
     twitchDownloaderInstalled: fs.existsSync(CLI),
-    version: "6.0.0"
+    version: "7.0.0"
   });
 });
 

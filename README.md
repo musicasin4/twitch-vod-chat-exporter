@@ -1,53 +1,50 @@
-# Twitch VOD Chat Exporter V6
+# Twitch VOD Chat Exporter V7
 
-A V6 adiciona duas informações pedidas ao export:
+A V7 usa os metadados de badges que o próprio TwitchDownloader incorpora ao JSON.
 
-- **meses de inscrição** no badge `Subscriber`;
-- **cor do usuário** como hexadecimal (`#RRGGBB`).
+O TwitchDownloader constrói `twitchBadges` a partir dos badges globais e dos
+badges específicos do canal e guarda, por versão, `title`, `description` e URL.
+É essa informação que o renderizador usa para exibir os badges. citeturn4search0turn1search0
 
-## Como a cor é obtida
+## Badge
 
-O chat replay da Twitch coloca a cor no próprio objeto `message` como `userColor`.
-Exemplos reais do formato do chat incluem:
+Para cada mensagem:
 
-`"userColor": "#1E90FF"`
+```text
+message.user_badges
+        ↓
+_id + version
+        ↓
+twitchBadges
+        ↓
+versions[version].title
+        ↓
+nome real do badge
+```
 
-e, quando o usuário não tem uma cor definida, `userColor` pode ser `null`. citeturn5search1
+Exemplos:
 
-A Twitch Chat Downloader também adicionou explicitamente a cor do usuário ao
-export e mantém esse dado no histórico do projeto. citeturn3search0
+```text
+Moderator
+Artist
+VIP
+Bot Badge
+Subscriber 12 meses
+```
 
-O nosso parser procura:
+Badges específicos do canal também são suportados.
 
-- `message.userColor`
-- `message.user_color`
-- `comment.userColor`
-- `comment.user_color`
-- `commenter.color`
+## Nome
 
-Cores nomeadas também são convertidas para hex.
+A coluna `Name` usa o nome de exibição:
 
-## Subscriber + meses
+1. `commenter.displayName`
+2. `commenter.display_name`
+3. `commenter.login`
+4. `commenter.name`
 
-Os badges do comentário são estruturas com `setID` e `version`. Para o badge
-`subscriber`, o `version` representa o nível/tempo do badge e pode ser usado
-como número de meses. Uma implementação de referência do ecossistema Twitch
-faz exatamente esse cruzamento e expõe `months` a partir da versão do badge.
-citeturn5search2
-
-Assim, o export fica, por exemplo:
-
-`Subscriber 12 meses`
-
-`Moderator`
-
-`VIP`
-
-`Broadcaster`
-
-ou:
-
-`Subscriber 24 meses | VIP`
+Isso evita exportar o login quando o usuário possui um nome de exibição
+diferente. A Twitch diferencia explicitamente `display-name` do nome de usuário. citeturn0search5turn0search7
 
 ## Colunas
 
@@ -60,20 +57,7 @@ Color
 Comment
 ```
 
-Exemplo:
+`Color` continua sendo a cor hexadecimal do usuário quando fornecida pelo chat.
 
-```text
-2026-08-09T19:04:19.622Z
-00:03:16.000
-Subscriber 12 meses
-jozinho
-#1E90FF
-online só agora?
-```
-
-A cor é exportada como texto hexadecimal para funcionar no CSV e no Excel.
-
-## Fonte
-
-O Twitch Chat Downloader atual informa que seu export contém cor de usuário e
-badges, e o TwitchDownloader possui suporte a badges no chat render. citeturn3search0turn0search2
+O TwitchDownloader documenta que `--embed-images` incorpora badges no JSON e
+que o `chatdownload` é destinado a VODs, highlights e clips. citeturn0search2turn1search1
