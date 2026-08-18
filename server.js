@@ -300,6 +300,16 @@ function findComments(root) {
   return [];
 }
 
+function firstNumber(obj, keys) {
+  for (const key of keys) {
+    if (obj && obj[key] !== undefined && obj[key] !== null && obj[key] !== "") {
+      const n = Number(obj[key]);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return 0;
+}
+
 function normalizeChat(json) {
   const comments = findComments(json);
 
