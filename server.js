@@ -280,6 +280,26 @@ function messageText(message) {
   return "";
 }
 
+function findComments(root) {
+  if (!root || typeof root !== "object") return [];
+
+  if (Array.isArray(root.comments)) return root.comments;
+
+  if (root.comments && Array.isArray(root.comments.edges)) {
+    return root.comments.edges.map(x => x?.node).filter(Boolean);
+  }
+
+  if (root.data && Array.isArray(root.data.comments)) {
+    return root.data.comments;
+  }
+
+  if (root.data?.comments && Array.isArray(root.data.comments.edges)) {
+    return root.data.comments.edges.map(x => x?.node).filter(Boolean);
+  }
+
+  return [];
+}
+
 function normalizeChat(json) {
   const comments = findComments(json);
 
