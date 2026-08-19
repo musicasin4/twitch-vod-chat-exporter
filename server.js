@@ -4,6 +4,7 @@ const fs = require("fs");
 const os = require("os");
 const crypto = require("crypto");
 const { spawn } = require("child_process");
+const https = require("https");
 const XLSX = require("xlsx");
 
 const app = express();
@@ -44,9 +45,9 @@ function runChatDownloader(vodId, outputFile) {
       "--id", vodId,
       "--compression", "None",
       "--embed-images",
-      "--bttv=false",
-      "--ffz=false",
-      "--stv=false",
+      "--bttv=true",
+      "--ffz=true",
+      "--stv=true",
       "--threads", "1",
       "--log-level", "Status,Info,Warning,Error",
       "--banner=false",
@@ -316,36 +317,209 @@ function firstNumber(obj, keys) {
   return 0;
 }
 
-function normalizeChat(json) {
-  const comments = findComments(json);
 
+const TWITCH_PUBLIC_CLIENT_ID = process.env.TWITCH_CLIENT_ID || "kimne78kx3ncx6brgo4mv6wki5h1ko";
+
+async function twitchGql(query) {
+  const r = await fetch("https://gql.twitch.tv/gql", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Client-ID": TWITCH_PUBLIC_CLIENT_ID
+    },
+    body: JSON.stringify({ query, variables: {} })
+  });
+  if (!r.ok) throw new Error(`Twitch GQL HTTP ${r.status}`);
+  const data = await r.json();
+  if (data?.errors?.length) throw new Error(data.errors[0].message || "Twitch GQL error");
+  return data?.data || {};
+}
+
+async function getVodOwner(vodId) {
+  try {
+    const data = await twitchGql(
+      `query{video(id:"${vodId}"){title,createdAt,lengthSeconds,owner{id,displayName,login}}}`
+    );
+    return data.video || {};
+  } catch (e) {
+    console.warn("Could not load VOD owner metadata:", e.message);
+    return {};
+  }
+}
+
+async function getJson(url) {
+  const r = await fetch(url, { headers: { "User-Agent": "Twitch-VOD-Chat-Exporter/9.0" } });
+  if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
+  return r.json();
+}
+
+async function getThirdPartyEmotes(ownerId) {
+  const map = new Map();
+  const add = (code, url, provider) => {
+    if (!code || !url || map.has(code)) return;
+    map.set(code, { url, provider, name: code });
+  };
+
+  const tasks = [];
+  tasks.push(getJson("https://api.betterttv.net/3/cached/emotes/global")
+    .then(list => list.forEach(e => add(e.code, `https://cdn.betterttv.net/emote/${e.id}/2x`, "BTTV")))
+    .catch(e => console.warn("BTTV global emotes:", e.message)));
+  tasks.push(getJson("https://api.betterttv.net/3/cached/frankerfacez/emotes/global")
+    .then(list => list.forEach(e => add(e.code, e.animated
+      ? `https://cdn.betterttv.net/frankerfacez_emote/${e.id}/animated/2`
+      : `https://cdn.betterttv.net/frankerfacez_emote/${e.id}/2`, "FFZ")))
+    .catch(e => console.warn("FFZ global emotes:", e.message)));
+  tasks.push(getJson("https://7tv.io/v3/emote-sets/global")
+    .then(obj => (obj.emotes || []).forEach(e => {
+      const files = e?.data?.host?.files || [];
+      const f = files.find(x => String(x.format).toLowerCase() === "webp") || files[0];
+      if (f && e?.data?.host?.url) add(e.name, `https:${e.data.host.url}/2x.${f.format}`, "7TV");
+    }))
+    .catch(e => console.warn("7TV global emotes:", e.message)));
+
+  if (ownerId) {
+    tasks.push(getJson(`https://api.betterttv.net/3/cached/users/twitch/${ownerId}`)
+      .then(obj => [...(obj.channelEmotes || []), ...(obj.sharedEmotes || [])]
+        .forEach(e => add(e.code, `https://cdn.betterttv.net/emote/${e.id}/2x`, "BTTV")))
+      .catch(e => console.warn("BTTV channel emotes:", e.message)));
+    tasks.push(getJson(`https://api.betterttv.net/3/cached/frankerfacez/users/twitch/${ownerId}`)
+      .then(list => list.forEach(e => add(e.code, e.animated
+        ? `https://cdn.betterttv.net/frankerfacez_emote/${e.id}/animated/2`
+        : `https://cdn.betterttv.net/frankerfacez_emote/${e.id}/2`, "FFZ")))
+      .catch(e => console.warn("FFZ channel emotes:", e.message)));
+    tasks.push(getJson(`https://7tv.io/v3/users/twitch/${ownerId}`)
+      .then(async user => {
+        const setId = user?.emote_set_id;
+        if (!setId) return;
+        const set = await getJson(`https://7tv.io/v3/emote-sets/${setId}`);
+        (set.emotes || []).forEach(e => {
+          const files = e?.data?.host?.files || [];
+          const f = files.find(x => String(x.format).toLowerCase() === "webp") || files[0];
+          if (f && e?.data?.host?.url) add(e.name, `https:${e.data.host.url}/2x.${f.format}`, "7TV");
+        });
+      })
+      .catch(e => console.warn("7TV channel emotes:", e.message)));
+  }
+
+  await Promise.all(tasks);
+  return map;
+}
+
+async function getChatBadgeMap(ownerId) {
+  const map = new Map();
+  try {
+    const q = `query{badges{imageURL(size:DOUBLE),description,title,setID,version}}`;
+    const data = await twitchGql(q);
+    for (const b of data.badges || []) {
+      const setId = String(b.setID || "").trim().toLowerCase();
+      const version = String(b.version || "").trim();
+      if (setId && version) map.set(`${setId}:${version}`, {
+        title: b.title || setId,
+        url: b.imageURL || ""
+      });
+    }
+  } catch (e) {
+    console.warn("Global Twitch badges:", e.message);
+  }
+
+  if (ownerId) {
+    try {
+      const q = `query{user(id:${JSON.stringify(String(ownerId))}){broadcastBadges{imageURL(size:DOUBLE),description,title,setID,version}}}`;
+      const data = await twitchGql(q);
+      for (const b of data.user?.broadcastBadges || []) {
+        const setId = String(b.setID || "").trim().toLowerCase();
+        const version = String(b.version || "").trim();
+        if (setId && version) map.set(`${setId}:${version}`, {
+          title: b.title || setId,
+          url: b.imageURL || ""
+        });
+      }
+    } catch (e) {
+      console.warn("Channel Twitch badges:", e.message);
+    }
+  }
+  return map;
+}
+
+function extractFragments(comment) {
+  const message = comment?.message || {};
+  return Array.isArray(message.fragments) ? message.fragments : [];
+}
+
+function firstPartyEmoteUrl(id) {
+  return `https://static-cdn.jtvnw.net/emoticons/v2/${encodeURIComponent(id)}/default/dark/2.0`;
+}
+
+function buildMessageParts(comment, thirdPartyMap) {
+  const fragments = extractFragments(comment);
+  const out = [];
+  const addText = text => { if (text) out.push({ type: "text", text }); };
+
+  for (const f of fragments) {
+    const text = String(f?.text ?? "");
+    const id = f?.emoticon?.emoticon_id ?? f?.emoticon?.emote_id ?? f?.emoticonId;
+    if (id) {
+      out.push({ type: "emote", text, url: firstPartyEmoteUrl(id), provider: "Twitch" });
+      continue;
+    }
+
+    if (!text) continue;
+    if (!thirdPartyMap.size) { addText(text); continue; }
+
+    const codes = [...thirdPartyMap.keys()].sort((a,b) => b.length-a.length);
+    const escaped = codes.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    if (!escaped.length) { addText(text); continue; }
+    const re = new RegExp(`(^|\\s)(${escaped.join("|")})(?=$|\\s)`, "g");
+    let last = 0, m;
+    while ((m = re.exec(text))) {
+      addText(text.slice(last, m.index + m[1].length));
+      const code = m[2];
+      const emote = thirdPartyMap.get(code);
+      out.push({ type: "emote", text: code, url: emote.url, provider: emote.provider });
+      last = re.lastIndex;
+    }
+    addText(text.slice(last));
+  }
+
+  if (!out.length) out.push({ type: "text", text: messageText(comment?.message || {}) });
+  return out;
+}
+
+function normalizeChat(json, thirdPartyMap, badgeMap) {
+  const comments = findComments(json);
   return comments.map(c => {
     const commenter = c?.commenter || c?.user || c?.author || {};
     const message = c?.message || c?.content || {};
-
     const offset = firstNumber(c, [
-      "contentOffsetSeconds",
-      "content_offset_seconds",
-      "contentOffset",
-      "offsetSeconds",
-      "offset",
-      "videoTimeSeconds",
-      "video_time_seconds"
+      "contentOffsetSeconds", "content_offset_seconds", "contentOffset",
+      "offsetSeconds", "offset", "videoTimeSeconds", "video_time_seconds"
     ]);
+
+    const badges = badgeObjectsFromMessage(c).map(b => rawBadgeParts(b));
+    const badgeData = badges.map(({setId, version}) => {
+      const key = `${setId.toLowerCase()}:${version}`;
+      const embedded = getEmbeddedBadgeMap(json).get(setId.toLowerCase())?.versions?.get(version);
+      const known = badgeMap.get(key) || embedded || {};
+      let title = String(known.title ?? setId).trim();
+      if (setId.toLowerCase() === "subscriber" && version && !/\b\d+\s*(meses?|months?)\b/i.test(title)) {
+        title = `${title} ${version} meses`;
+      }
+      const url = String(
+        known.url ?? known.imageUrl ?? known.image_url ??
+        known.image_url_2x ?? known.imageURL ?? ""
+      ).trim();
+      return {setId, version, title, url};
+    }).filter(x => x.title || x.url);
 
     return {
       Date: c?.createdAt || c?.created_at || c?.timestamp || "",
       "Comment video time": offset,
-      Badge: badgeString(c, json),
-      BadgeImages: resolveBadges(c, json).map(b => ({ title: b.title, url: b.url })),
-      Name:
-        commenter.displayName ??
-        commenter.display_name ??
-        commenter.login ??
-        commenter.name ??
-        "",
+      Badge: badgeData.map(x => x.title).filter(Boolean).join(" | "),
+      BadgeImages: badgeData,
+      Name: commenter.displayName ?? commenter.display_name ?? commenter.login ?? commenter.name ?? "",
       Color: extractUserColor(c),
-      Comment: messageText(message)
+      Comment: messageText(message),
+      MessageParts: buildMessageParts(c, thirdPartyMap)
     };
   });
 }
@@ -370,7 +544,13 @@ app.post("/api/chat", async (req, res) => {
 
     const raw = fs.readFileSync(jsonFile, "utf8");
     const parsed = JSON.parse(raw);
-    const comments = normalizeChat(parsed);
+    const vodInfo = await getVodOwner(vodId);
+    const ownerId = vodInfo?.owner?.id || "";
+    const [thirdPartyMap, badgeMap] = await Promise.all([
+      getThirdPartyEmotes(ownerId),
+      getChatBadgeMap(ownerId)
+    ]);
+    const comments = normalizeChat(parsed, thirdPartyMap, badgeMap);
 
     if (!comments.length) {
       throw new Error(
@@ -379,7 +559,7 @@ app.post("/api/chat", async (req, res) => {
     }
 
     res.json({
-      vod: { id: vodId },
+      vod: { id: vodId, title: vodInfo?.title || "", createdAt: vodInfo?.createdAt || "", owner: vodInfo?.owner || {} },
       count: comments.length,
       comments
     });
@@ -430,7 +610,7 @@ app.get("/api/health", (req, res) => {
   res.json({
     ok: true,
     twitchDownloaderInstalled: fs.existsSync(CLI),
-    version: "8.0.0"
+    version: "9.0.0"
   });
 });
 

@@ -1,22 +1,19 @@
 <!doctype html>
-<html lang="pt-BR">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Twitch VOD Chat Exporter</title><link rel="stylesheet" href="/style.css"></head>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Twitch VOD Chat Exporter</title><link rel="stylesheet" href="/style.css"></head>
 <body><main class="container">
-<section class="hero"><div class="eyebrow">TWITCH VOD TOOL</div><h1>Exportar chat de VOD</h1><p>Baixe o chat replay de um VOD da Twitch em CSV ou Excel.</p></section>
+<section class="hero"><div class="eyebrow">TWITCH VOD TOOL</div><h1>Exportar chat de VOD</h1><p>Baixe e pesquise o chat replay de um VOD da Twitch.</p></section>
 <section class="card">
-<label for="vod">URL do VOD ou ID</label>
-<div class="input-row"><input id="vod" placeholder="https://www.twitch.tv/videos/123456789"><button id="download">Baixar chat</button></div>
-<div class="options">
-<label class="check"><input type="checkbox" id="skipEmpty" checked> Ignorar mensagens vazias</label>
-<label class="select-label" for="pageSize">Prévia:
-<select id="pageSize"><option value="100" selected>100 mensagens por página</option><option value="250">250 mensagens por página</option><option value="500">500 mensagens por página</option><option value="1000">1.000 mensagens por página</option><option value="0">Todas as mensagens</option></select></label>
-</div>
-<div id="status" class="status hidden"></div><div id="progressWrap" class="progress-wrap hidden"><div class="progress"><div id="progress"></div></div></div>
-</section>
+<label for="vod">URL do VOD ou ID</label><div class="input-row"><input id="vod" placeholder="https://www.twitch.tv/videos/123456789"><button id="download">Baixar chat</button></div>
+<div class="options"><label class="check"><input type="checkbox" id="skipEmpty" checked> Ignorar mensagens vazias</label><label class="select-label" for="pageSize">Prévia:<select id="pageSize"><option value="100" selected>100 mensagens por página</option><option value="250">250 mensagens por página</option><option value="500">500 mensagens por página</option><option value="1000">1.000 mensagens por página</option><option value="0">Todas as mensagens</option></select></label></div>
+<div id="status" class="status hidden"></div><div id="progressWrap" class="progress-wrap hidden"><div class="progress"><div id="progress"></div></div></div></section>
 <section id="result" class="card hidden">
 <div class="result-head"><div><div class="eyebrow">RESULTADO</div><h2 id="title">Chat</h2><p id="meta"></p></div><div class="actions"><button id="csv" class="secondary">CSV</button><button id="xlsx" class="secondary">Excel (.xlsx)</button></div></div>
+<div class="chat-tools"><div class="search-box"><input id="search" placeholder="Pesquisar usuário ou palavra no chat"><button id="clearSearch" class="clear-btn" title="Limpar pesquisa">×</button></div><button id="filterMenu" class="menu-btn" title="Opções de exibição">•••</button><div id="filterPanel" class="filter-panel hidden">
+<label class="switch-row"><span>Mostrar tempo do VOD</span><input type="radio" name="timeMode" value="offset" checked></label>
+<label class="switch-row"><span>Mostrar hora real</span><input type="radio" name="timeMode" value="realTime"></label>
+<label class="switch-row"><span>Mostrar data e hora reais</span><input type="radio" name="timeMode" value="realDateTime"></label>
+</div></div>
 <div class="preview-toolbar"><div id="previewMeta"></div><div id="pagination" class="pagination"><span id="pageInfo"></span></div></div>
-<div class="chat-preview"><table><thead><tr><th>Time</th><th>Badges</th><th>Username</th><th>Message</th></tr></thead><tbody id="preview"></tbody></table></div>
-</section>
-<p class="note">A prévia usa imagens dos badges, nome de exibição e cor original do usuário. CSV e Excel mantêm o nome do badge e a tag hexadecimal da cor.</p>
+<div class="chat-preview"><table><thead><tr><th id="timeHeader">Tempo</th><th>Nome</th><th>Mensagem</th></tr></thead><tbody id="preview"></tbody></table></div></section>
+<p class="note">A prévia mostra badges e emotes como imagens, usa o nome de exibição e a cor do usuário. Clique no nome para filtrar por usuário. A busca também encontra palavras dentro das mensagens.</p>
 </main><script src="/app.js"></script></body></html>

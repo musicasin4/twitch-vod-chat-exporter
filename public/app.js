@@ -1,90 +1,24 @@
-let comments=[],vodInfo=null,currentPage=1,pageSize=100;
+let comments=[],filtered=[],vodInfo=null,currentPage=1,pageSize=100,timeMode="offset",searchTerm="";
 const $=id=>document.getElementById(id);
-
-function offset(s){
-  const t=Math.max(0,Math.floor(Number(s||0)));
-  return `${String(Math.floor(t/3600)).padStart(2,"0")}:${String(Math.floor(t/60)%60).padStart(2,"0")}:${String(t%60).padStart(2,"0")}`;
-}
+function offset(s){const t=Math.max(0,Math.floor(Number(s||0)));return `${String(Math.floor(t/3600)).padStart(2,"0")}:${String(Math.floor(t/60)%60).padStart(2,"0")}:${String(t%60).padStart(2,"0")}`}
 function esc(v){return `"${String(v??"").replace(/"/g,'""')}"`}
-function rows(){return comments.map(x=>({
-  Date:x.Date||"",
-  "Comment video time":offset(x["Comment video time"]),
-  Badge:x.Badge||"",
-  Name:x.Name||"",
-  Color:x.Color||"",
-  Comment:x.Comment||""
-}))}
-function status(t,e=false){
-  $("status").textContent=t;$("status").classList.remove("hidden");$("status").classList.toggle("error",e);
-}
+function rows(){return comments.map(x=>({Date:x.Date||"", "Comment video time":offset(x["Comment video time"]), Badge:x.Badge||"", Name:x.Name||"", Color:x.Color||"", Comment:x.Comment||""}))}
+function status(t,e=false){$("status").textContent=t;$("status").classList.remove("hidden");$("status").classList.toggle("error",e)}
 function blob(b,n){const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=n;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
-function totalPages(){return pageSize===0?1:Math.max(1,Math.ceil(comments.length/pageSize))}
-function visibleComments(){if(pageSize===0)return comments;const s=(currentPage-1)*pageSize;return comments.slice(s,s+pageSize)}
-
-function badgeNode(badge){
-  const wrap=document.createElement("span");wrap.className="badge-wrap";wrap.title=badge.title||"";
-  if(badge.url){
-    const img=document.createElement("img");
-    img.className="chat-badge";img.src=badge.url;img.alt=badge.title||"Badge";img.loading="lazy";img.referrerPolicy="no-referrer";
-    img.onerror=()=>{wrap.textContent=badge.title||"";wrap.classList.add("badge-fallback")};
-    wrap.appendChild(img);
-  }else{wrap.textContent=badge.title||"";wrap.classList.add("badge-fallback")}
-  return wrap;
-}
-function pageButton(p){
-  const b=document.createElement("button");b.className="page-btn secondary"+(p===currentPage?" active":"");b.textContent=p;
-  b.onclick=()=>{currentPage=p;preview()};return b;
-}
-function renderPagination(){
-  const c=$("pagination"),label=$("pageInfo");c.innerHTML="";
-  if(pageSize===0){label.textContent=`Todas as ${comments.length.toLocaleString("pt-BR")} mensagens`;c.classList.add("hidden");return}
-  c.classList.remove("hidden");
-  const total=totalPages(),start=comments.length?(currentPage-1)*pageSize+1:0,end=Math.min(currentPage*pageSize,comments.length);
-  label.textContent=`${start.toLocaleString("pt-BR")}–${end.toLocaleString("pt-BR")} de ${comments.length.toLocaleString("pt-BR")}`;
-  const prev=document.createElement("button");prev.className="page-btn secondary";prev.textContent="‹";prev.disabled=currentPage<=1;prev.onclick=()=>{currentPage--;preview()};c.appendChild(prev);
-  let first=Math.max(1,currentPage-3),last=Math.min(total,first+6);first=Math.max(1,last-6);
-  if(first>1){c.appendChild(pageButton(1));if(first>2){const d=document.createElement("span");d.className="page-dots";d.textContent="…";c.appendChild(d)}}
-  for(let p=first;p<=last;p++)c.appendChild(pageButton(p));
-  if(last<total){if(last<total-1){const d=document.createElement("span");d.className="page-dots";d.textContent="…";c.appendChild(d)}c.appendChild(pageButton(total))}
-  const next=document.createElement("button");next.className="page-btn secondary";next.textContent="›";next.disabled=currentPage>=total;next.onclick=()=>{currentPage++;preview()};c.appendChild(next);
-}
-function preview(){
-  const b=$("preview");b.innerHTML="";const frag=document.createDocumentFragment();
-  for(const r of visibleComments()){
-    const tr=document.createElement("tr");
-    const time=document.createElement("td");time.className="time-col";time.textContent=offset(r["Comment video time"]);tr.appendChild(time);
-    const bt=document.createElement("td");bt.className="badges-col";
-    (Array.isArray(r.BadgeImages)?r.BadgeImages:[]).forEach(x=>bt.appendChild(badgeNode(x)));tr.appendChild(bt);
-    const name=document.createElement("td");name.className="name-col";name.textContent=r.Name||"";if(r.Color)name.style.color=r.Color;tr.appendChild(name);
-    const msg=document.createElement("td");msg.className="comment-col";msg.textContent=r.Comment||"";tr.appendChild(msg);
-    frag.appendChild(tr);
-  }
-  b.appendChild(frag);renderPagination();
-  $("previewMeta").textContent=pageSize===0?`Mostrando todas as ${comments.length.toLocaleString("pt-BR")} mensagens`:`Mostrando ${visibleComments().length.toLocaleString("pt-BR")} mensagens nesta página`;
-}
+function totalPages(){return pageSize===0?1:Math.max(1,Math.ceil(filtered.length/pageSize))}
+function visibleComments(){if(pageSize===0)return filtered;const s=(currentPage-1)*pageSize;return filtered.slice(s,s+pageSize)}
+function badgeNode(b){const w=document.createElement("span");w.className="badge-wrap";w.title=b.title||"";if(b.url){const i=document.createElement("img");i.className="chat-badge";i.src=b.url;i.alt=b.title||"Badge";i.loading="lazy";i.referrerPolicy="no-referrer";i.onerror=()=>w.remove();w.appendChild(i)}return w}
+function emoteNode(p){const i=document.createElement("img");i.className="chat-emote";i.src=p.url;i.alt=p.text||"emote";i.title=p.text||"";i.loading="lazy";i.referrerPolicy="no-referrer";i.onerror=()=>{const s=document.createElement("span");s.textContent=p.text||"";i.replaceWith(s)};return i}
+function renderParts(parts){const f=document.createDocumentFragment();for(const p of (parts||[])){if(p.type==="emote"&&p.url)f.appendChild(emoteNode(p));else f.appendChild(document.createTextNode(p.text||""))}return f}
+function formatReal(date,full){if(!date)return "";const d=new Date(date);if(Number.isNaN(d.getTime()))return "";const opts=full?{timeZone:"America/Sao_Paulo",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}:{timeZone:"America/Sao_Paulo",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false};return new Intl.DateTimeFormat("pt-BR",opts).format(d).replace(", "," ")}
+function timeText(r){if(timeMode==="realTime")return formatReal(r.Date,false);if(timeMode==="realDateTime")return formatReal(r.Date,true);return offset(r["Comment video time"])}
+function applySearch(){const q=searchTerm.trim().toLocaleLowerCase("pt-BR");if(!q)filtered=[...comments];else filtered=comments.filter(r=>String(r.Name||"").toLocaleLowerCase("pt-BR").includes(q)||String(r.Comment||"").toLocaleLowerCase("pt-BR").includes(q));currentPage=1;preview()}
+function pageButton(p){const b=document.createElement("button");b.className="page-btn secondary"+(p===currentPage?" active":"");b.textContent=p;b.onclick=()=>{currentPage=p;preview()};return b}
+function renderPagination(){const c=$("pagination"),label=$("pageInfo");c.innerHTML="";if(pageSize===0){label.textContent=`Todas as ${filtered.length.toLocaleString("pt-BR")} mensagens`;c.classList.add("hidden");return}c.classList.remove("hidden");const total=totalPages(),start=filtered.length?(currentPage-1)*pageSize+1:0,end=Math.min(currentPage*pageSize,filtered.length);label.textContent=`${start.toLocaleString("pt-BR")}–${end.toLocaleString("pt-BR")} de ${filtered.length.toLocaleString("pt-BR")}`;const prev=document.createElement("button");prev.className="page-btn secondary";prev.textContent="‹";prev.disabled=currentPage<=1;prev.onclick=()=>{currentPage--;preview()};c.appendChild(prev);let first=Math.max(1,currentPage-3),last=Math.min(total,first+6);first=Math.max(1,last-6);if(first>1){c.appendChild(pageButton(1));if(first>2){const d=document.createElement("span");d.className="page-dots";d.textContent="…";c.appendChild(d)}}for(let p=first;p<=last;p++)c.appendChild(pageButton(p));if(last<total){if(last<total-1){const d=document.createElement("span");d.className="page-dots";d.textContent="…";c.appendChild(d)}c.appendChild(pageButton(total))}const next=document.createElement("button");next.className="page-btn secondary";next.textContent="›";next.disabled=currentPage>=total;next.onclick=()=>{currentPage++;preview()};c.appendChild(next)}
+function preview(){const b=$("preview");b.innerHTML="";const frag=document.createDocumentFragment();for(const r of visibleComments()){const tr=document.createElement("tr");const t=document.createElement("td");t.className="time-col";t.textContent=timeText(r);tr.appendChild(t);const u=document.createElement("td");u.className="user-col";const bd=document.createElement("span");bd.className="badges-inline";(Array.isArray(r.BadgeImages)?r.BadgeImages:[]).forEach(x=>bd.appendChild(badgeNode(x)));u.appendChild(bd);const n=document.createElement("button");n.className="username";n.textContent=r.Name||"";if(r.Color)n.style.color=r.Color;n.title="Filtrar por este usuário";n.onclick=()=>{$("search").value=r.Name||"";searchTerm=r.Name||"";applySearch()};u.appendChild(n);tr.appendChild(u);const m=document.createElement("td");m.className="message-col";m.appendChild(renderParts(r.MessageParts));tr.appendChild(m);frag.appendChild(tr)}b.appendChild(frag);renderPagination();$("previewMeta").textContent=searchTerm?`${filtered.length.toLocaleString("pt-BR")} mensagens encontradas para “${searchTerm}”`:`${comments.length.toLocaleString("pt-BR")} mensagens baixadas`;$("timeHeader").textContent=timeMode==="offset"?"Tempo":"Horário"}
 $("pageSize").onchange=e=>{pageSize=Number(e.target.value);currentPage=1;preview()};
-$("download").onclick=async()=>{
-  const vod=$("vod").value.trim();if(!vod)return status("Informe a URL ou o ID do VOD.",true);
-  $("download").disabled=true;$("progressWrap").classList.remove("hidden");$("progress").style.width="12%";status("Baixando o chat replay... VODs grandes podem levar alguns minutos.");
-  try{
-    $("progress").style.width="25%";
-    const r=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({vod})});
-    $("progress").style.width="80%";const d=await r.json();if(!r.ok)throw Error(d.error||"Erro ao baixar o chat.");
-    comments=d.comments||[];if($("skipEmpty").checked)comments=comments.filter(x=>String(x.Comment||"").trim());
-    vodInfo=d.vod||{};currentPage=1;pageSize=Number($("pageSize").value);
-    $("title").textContent=`VOD ${vodInfo.id||""}`;$("meta").textContent=`${comments.length.toLocaleString("pt-BR")} mensagens baixadas`;
-    preview();$("result").classList.remove("hidden");$("progress").style.width="100%";status(`Concluído: ${comments.length.toLocaleString("pt-BR")} mensagens.`);
-  }catch(e){$("progress").style.width="0";status(e.message||"Falha ao baixar o chat.",true)}
-  finally{$("download").disabled=false}
-};
+$("search").addEventListener("input",e=>{searchTerm=e.target.value;applySearch()});$("clearSearch").onclick=()=>{$("search").value="";searchTerm="";applySearch()};$("filterMenu").onclick=()=>$("filterPanel").classList.toggle("hidden");document.addEventListener("click",e=>{if(!$("filterPanel").contains(e.target)&&e.target!==$("filterMenu"))$("filterPanel").classList.add("hidden")});document.querySelectorAll('input[name="timeMode"]').forEach(x=>x.onchange=()=>{timeMode=x.value;preview()});
+$("download").onclick=async()=>{const vod=$("vod").value.trim();if(!vod)return status("Informe a URL ou o ID do VOD.",true);$("download").disabled=true;$("progressWrap").classList.remove("hidden");$("progress").style.width="12%";status("Baixando o chat, badges e emotes... VODs grandes podem levar alguns minutos.");try{$("progress").style.width="25%";const r=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({vod})});$("progress").style.width="80%";const d=await r.json();if(!r.ok)throw Error(d.error||"Erro ao baixar o chat.");comments=d.comments||[];if($("skipEmpty").checked)comments=comments.filter(x=>String(x.Comment||"").trim());filtered=[...comments];vodInfo=d.vod||{};currentPage=1;pageSize=Number($("pageSize").value);searchTerm="";$("search").value="";$("title").textContent=vodInfo.title||`VOD ${vodInfo.id||""}`;$("meta").textContent=`${comments.length.toLocaleString("pt-BR")} mensagens baixadas` ;preview();$("result").classList.remove("hidden");$("progress").style.width="100%";status(`Concluído: ${comments.length.toLocaleString("pt-BR")} mensagens.`)}catch(e){$("progress").style.width="0";status(e.message||"Falha ao baixar o chat.",true)}finally{$("download").disabled=false}};
 $("vod").onkeydown=e=>{if(e.key==="Enter")$("download").click()};
-$("csv").onclick=()=>{
-  const h=["Date","Comment video time","Badge","Name","Color","Comment"],r=rows();
-  const csv=[h.map(esc).join(","),...r.map(x=>h.map(k=>esc(x[k])).join(","))].join("\r\n");
-  blob(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"}),`twitch_${vodInfo?.id||"chat"}_chat.csv`);
-};
-$("xlsx").onclick=async()=>{
-  const r=rows();if(!r.length)return;
-  try{const x=await fetch("/api/xlsx",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({comments:r})});if(!x.ok)throw Error(await x.text());blob(await x.blob(),`twitch_${vodInfo?.id||"chat"}_chat.xlsx`)}
-  catch(e){status(e.message,true)}
-};
+$("csv").onclick=()=>{const h=["Date","Comment video time","Badge","Name","Color","Comment"],r=rows();const csv=[h.map(esc).join(","),...r.map(x=>h.map(k=>esc(x[k])).join(","))].join("\r\n");blob(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"}),`twitch_${vodInfo?.id||"chat"}_chat.csv`)};
+$("xlsx").onclick=async()=>{const r=rows();if(!r.length)return;try{const x=await fetch("/api/xlsx",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({comments:r})});if(!x.ok)throw Error(await x.text());blob(await x.blob(),`twitch_${vodInfo?.id||"chat"}_chat.xlsx`)}catch(e){status(e.message,true)}};

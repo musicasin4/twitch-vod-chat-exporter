@@ -1,15 +1,17 @@
-# Twitch VOD Chat Exporter V8
+# Twitch VOD Chat Exporter V9
 
-V8 adiciona uma prévia de chat paginada e visualmente mais próxima do chat da Twitch.
+V9 adiciona uma prévia interativa do chat inspirada no Twitch Chat Downloader.
 
-- 100 / 250 / 500 / 1.000 mensagens por página ou todas.
-- Paginação sem alterar o conjunto de mensagens exportado.
-- Badges mostrados como imagens na prévia.
-- Nome de exibição mostrado na cor do usuário.
-- Tempo da prévia e do CSV/XLSX no formato `00:00:00`.
-- CSV/XLSX continuam usando o nome textual do badge e a cor hexadecimal.
-- `Subscriber` mantém o número de meses.
-- `findComments()` e `firstNumber()` são mantidos para evitar o erro da V7.
+- badges por URL real do Twitch;
+- emotes Twitch por URL do CDN;
+- emotes BTTV, FFZ e 7TV quando disponíveis;
+- busca por nome de exibição ou palavra;
+- clique no nome para filtrar o usuário;
+- menu de exibição de tempo em português;
+- Tempo do VOD (padrão);
+- Hora real (Brasília);
+- Data e hora reais (Brasília);
+- paginação;
+- CSV/XLSX continuam exportando nome do badge e cor hexadecimal.
 
-A imagem do badge vem dos metadados `twitchBadges` incorporados pelo TwitchDownloader
-quando `--embed-images` é usado.
+O TwitchDownloader é executado com `--embed-images --bttv=true --ffz=true --stv=true`, seguindo a própria documentação do projeto para emotes e badges.
