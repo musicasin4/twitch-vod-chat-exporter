@@ -348,7 +348,7 @@ async function getVodOwner(vodId) {
 }
 
 async function getJson(url) {
-  const r = await fetch(url, { headers: { "User-Agent": "Twitch-VOD-Chat-Exporter/9.0" } });
+  const r = await fetch(url, { headers: { "User-Agent": "Twitch-VOD-Chat-Exporter/10.0" } });
   if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
   return r.json();
 }
@@ -407,38 +407,81 @@ async function getThirdPartyEmotes(ownerId) {
 
 async function getChatBadgeMap(ownerId) {
   const map = new Map();
+
+  const add = (b) => {
+    if (!b || typeof b !== "object") return;
+    const setId = String(b.setID ?? b.setId ?? b.set_id ?? b.name ?? "").trim().toLowerCase();
+    const version = String(b.version ?? b.id ?? b.versionID ?? "").trim();
+    const url = String(
+      b.imageURL ?? b.imageUrl ?? b.image_url ?? b.image_url_2x ?? b.url ?? ""
+    ).trim();
+    if (!setId || !version || !url) return;
+    map.set(`${setId}:${version}`, {
+      title: String(b.title ?? setId).trim(),
+      url
+    });
+  };
+
+  // Use the same first-party GraphQL badge source used by TwitchDownloader.
+  // TwitchDownloader embeds image data specifically so chat can be rendered offline.
   try {
-    const q = `query{badges{imageURL(size:DOUBLE),description,title,setID,version}}`;
-    const data = await twitchGql(q);
-    for (const b of data.badges || []) {
-      const setId = String(b.setID || "").trim().toLowerCase();
-      const version = String(b.version || "").trim();
-      if (setId && version) map.set(`${setId}:${version}`, {
-        title: b.title || setId,
-        url: b.imageURL || ""
-      });
-    }
+    const data = await twitchGql(
+      `query{badges{imageURL(size:DOUBLE),description,title,setID,version}}`
+    );
+    for (const b of data.badges || []) add(b);
   } catch (e) {
     console.warn("Global Twitch badges:", e.message);
   }
 
+  // Channel-specific badges override global badges, exactly like TwitchDownloader.
   if (ownerId) {
     try {
-      const q = `query{user(id:${JSON.stringify(String(ownerId))}){broadcastBadges{imageURL(size:DOUBLE),description,title,setID,version}}}`;
-      const data = await twitchGql(q);
-      for (const b of data.user?.broadcastBadges || []) {
-        const setId = String(b.setID || "").trim().toLowerCase();
-        const version = String(b.version || "").trim();
-        if (setId && version) map.set(`${setId}:${version}`, {
-          title: b.title || setId,
-          url: b.imageURL || ""
-        });
-      }
+      const data = await twitchGql(
+        `query{user(id:${JSON.stringify(String(ownerId))}){broadcastBadges{imageURL(size:DOUBLE),description,title,setID,version}}}`
+      );
+      for (const b of data.user?.broadcastBadges || []) add(b);
     } catch (e) {
       console.warn("Channel Twitch badges:", e.message);
     }
   }
+
   return map;
+}
+
+async function proxyRemoteImage(req, res) {
+  const target = String(req.query.url || "").trim();
+  if (!target || !/^https:\/\//i.test(target)) {
+    return res.status(400).send("URL de imagem inválida.");
+  }
+
+  try {
+    const u = new URL(target);
+    const allowed = [
+      "static-cdn.jtvnw.net",
+      "cdn.betterttv.net",
+      "7tv.io",
+      "cdn.7tv.app",
+      "emotes.7tv.app",
+      "cdn.frankerfacez.com"
+    ];
+    if (!allowed.includes(u.hostname)) {
+      return res.status(403).send("Host de imagem não permitido.");
+    }
+
+    const r = await fetch(u, {
+      headers: { "User-Agent": "Twitch-VOD-Chat-Exporter/10.0" }
+    });
+    if (!r.ok) return res.status(r.status).send("Não foi possível carregar a imagem.");
+
+    const type = r.headers.get("content-type") || "image/png";
+    const bytes = Buffer.from(await r.arrayBuffer());
+    res.set("Content-Type", type);
+    res.set("Cache-Control", "public, max-age=86400, immutable");
+    res.send(bytes);
+  } catch (e) {
+    console.warn("Image proxy:", e.message);
+    res.status(502).send("Erro ao carregar a imagem.");
+  }
 }
 
 function extractFragments(comment) {
@@ -485,6 +528,34 @@ function buildMessageParts(comment, thirdPartyMap) {
   return out;
 }
 
+function embeddedBadgeImageUrl(versionData) {
+  if (!versionData || typeof versionData !== "object") return "";
+
+  const direct = String(
+    versionData.url ?? versionData.imageUrl ?? versionData.image_url ??
+    versionData.image_url_2x ?? versionData.imageURL ?? ""
+  ).trim();
+  if (direct) return direct;
+
+  const codec = String(
+    versionData.codec ?? versionData.Codec ?? versionData.format ?? "png"
+  ).toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
+  const mime = codec === "webp" ? "image/webp" : codec === "gif" ? "image/gif" : "image/png";
+
+  // TwitchDownloader can embed the actual badge bytes in the JSON. Depending on
+  // the serializer/version this can be a base64 string or an array of bytes.
+  const raw = versionData.data ?? versionData.bytes ?? versionData.imageData;
+  if (typeof raw === "string" && raw) {
+    if (raw.startsWith("data:image/")) return raw;
+    try { return `data:${mime};base64,${raw}`; } catch {}
+  }
+  if (Array.isArray(raw) && raw.length) {
+    try { return `data:${mime};base64,${Buffer.from(raw).toString("base64")}`; } catch {}
+  }
+
+  return "";
+}
+
 function normalizeChat(json, thirdPartyMap, badgeMap) {
   const comments = findComments(json);
   return comments.map(c => {
@@ -504,11 +575,16 @@ function normalizeChat(json, thirdPartyMap, badgeMap) {
       if (setId.toLowerCase() === "subscriber" && version && !/\b\d+\s*(meses?|months?)\b/i.test(title)) {
         title = `${title} ${version} meses`;
       }
-      const url = String(
+      const sourceUrl = embeddedBadgeImageUrl(known) || String(
         known.url ?? known.imageUrl ?? known.image_url ??
         known.image_url_2x ?? known.imageURL ?? ""
       ).trim();
-      return {setId, version, title, url};
+      const url = sourceUrl.startsWith("data:image/")
+        ? sourceUrl
+        : sourceUrl
+          ? `/api/image?url=${encodeURIComponent(sourceUrl)}`
+          : "";
+      return {setId, version, title, url, sourceUrl};
     }).filter(x => x.title || x.url);
 
     return {
@@ -523,6 +599,8 @@ function normalizeChat(json, thirdPartyMap, badgeMap) {
     };
   });
 }
+
+app.get("/api/image", proxyRemoteImage);
 
 app.post("/api/chat", async (req, res) => {
   const vodId = extractVodId(req.body?.vod);

@@ -1,4 +1,4 @@
-# V9
+# V10
 
 - Corrige a prévia de badges usando URLs reais do Twitch.
 - Adiciona emotes Twitch, BTTV, FFZ e 7TV.

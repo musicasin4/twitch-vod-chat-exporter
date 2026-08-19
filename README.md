@@ -1,6 +1,6 @@
-# Twitch VOD Chat Exporter V9
+# Twitch VOD Chat Exporter V10
 
-V9 adiciona uma prévia interativa do chat inspirada no Twitch Chat Downloader.
+V10 adiciona uma prévia interativa do chat inspirada no Twitch Chat Downloader.
 
 - badges por URL real do Twitch;
 - emotes Twitch por URL do CDN;
