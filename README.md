@@ -15,3 +15,18 @@ V10 adiciona uma prévia interativa do chat inspirada no Twitch Chat Downloader.
 - CSV/XLSX continuam exportando nome do badge e cor hexadecimal.
 
 O TwitchDownloader é executado com `--embed-images --bttv=true --ffz=true --stv=true`, seguindo a própria documentação do projeto para emotes e badges.
+
+
+## V11
+
+### Abrir o VOD no tempo da mensagem
+
+O horário mostrado na coluna `Tempo` agora é clicável. Ao clicar, a página abre uma nova aba no VOD usando o parâmetro de tempo da Twitch, por exemplo:
+
+`https://www.twitch.tv/videos/123456789?t=1h2m3s`
+
+A Twitch documenta o parâmetro `time` no player de VOD e o formato `1h2m3s`.
+
+### Modo escuro
+
+O menu `•••` ganhou a opção `Modo escuro`. A preferência é salva no navegador.
