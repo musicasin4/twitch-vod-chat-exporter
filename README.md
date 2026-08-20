@@ -30,3 +30,8 @@ A Twitch documenta o parâmetro `time` no player de VOD e o formato `1h2m3s`.
 ### Modo escuro
 
 O menu `•••` ganhou a opção `Modo escuro`. A preferência é salva no navegador.
+
+
+## V12
+
+O modo escuro agora é controlado por um botão fixo no canto inferior direito. O menu de opções contém somente os modos de horário. No modo escuro, tempo e nome não recebem fundo ou cor roxa artificial: o tempo permanece neutro e o nome mantém a cor original do usuário.
